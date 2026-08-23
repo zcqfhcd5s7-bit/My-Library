@@ -34,7 +34,11 @@ body{margin:0;background:var(--chalk);color:var(--ink);font-family:var(--font-bo
 .panel{max-width:720px;margin:-1.8rem auto 0;background:#fff;border:1px solid var(--line);box-shadow:0 10px 26px rgba(0,0,0,.14);padding:1.5rem;position:relative;z-index:2;}
 label{display:block;font-family:var(--font-mono);font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;color:var(--pitch-light);margin-bottom:.4rem;}
 .hint{font-family:var(--font-mono);font-size:.72rem;color:var(--muted);margin-top:.5rem;}
-input[type=url], input[type=text], textarea{width:100%;padding:.75rem .9rem;border:1px solid var(--line);font-family:var(--font-body);font-size:1rem;background:var(--chalk);color:var(--ink);}
+input[type=url], input[type=text], input[type=password], textarea{width:100%;padding:.75rem .9rem;border:1px solid var(--line);font-family:var(--font-body);font-size:1rem;background:var(--chalk);color:var(--ink);}
+.key-row{display:flex;gap:.6rem;margin-top:1rem;align-items:center;flex-wrap:wrap;}
+.key-row input{flex:1;min-width:200px;}
+.key-status{font-family:var(--font-mono);font-size:.68rem;color:var(--muted);margin-top:.4rem;}
+.key-status.ok{color:var(--pitch-light);}
 textarea{resize:vertical;}
 input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
 .btn{font-family:var(--font-display);text-transform:uppercase;letter-spacing:.05em;font-weight:600;background:var(--gold);color:var(--pitch);border:none;padding:.8rem 1.5rem;cursor:pointer;font-size:.95rem;}
@@ -91,6 +95,12 @@ input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
     <button class="btn" id="translateBtn" type="button">Перевести статью</button>
     <button class="btn secondary" id="manualToggle" type="button">Вставить текст вручную</button>
   </div>
+
+  <div class="key-row">
+    <input type="password" id="apiKeyInput" placeholder="API-ключ Anthropic (sk-ant-...)">
+    <button class="btn secondary" id="saveKeyBtn" type="button">Сохранить ключ</button>
+  </div>
+  <div class="key-status" id="keyStatus"></div>
 
   <div class="manual" id="manualBlock">
     <label for="manualTitle">Заголовок (необязательно)</label>
@@ -273,20 +283,31 @@ function tryParseArray(s){
 }
 
 async function translateChunk(chunk){
-  const prompt = `Переведи этот JSON-массив абзацев футбольной (соккер) статьи на естественный, беглый русский язык, в стиле русской спортивной журналистики (как Sports.ru, Championat). Имена клубов и игроков передавай в принятой в русских спортивных СМИ транслитерации. Сохрани точное количество элементов массива и их порядок. Ответь ТОЛЬКО чистым JSON-массивом строк — без маркдна, без блоков кода, без пояснений.\n\n${JSON.stringify(chunk)}`;
-  try{
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user', content:prompt}]})
-    });
-    const data = await res.json();
-    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-    const clean = text.replace(/```json|```/g,'').trim();
-    const arr = tryParseArray(clean);
-    if(Array.isArray(arr) && arr.length===chunk.length) return arr;
-  }catch(e){ /* fall through to untranslated fallback */ }
-  return chunk;
+  const apiKey = localStorage.getItem('anthropicApiKey');
+  if(!apiKey){ const e = new Error('no_api_key'); e.code='no_api_key'; throw e; }
+  const prompt = `Переведи этот JSON-массив абзацев футбольной (соккер) статьи на естественный, беглый русский язык, в стиле русской спортивной журналистики (как Sports.ru, Championat). Имена клубов и игроков передавай в принятой в русских спортивных СМИ транслитерации. Сохрани точное количество элементов массива и их порядок. Ответь ТОЛЬКО чистым JSON-массивом строк — без markdown, без блоков кода, без пояснений.\n\n${JSON.stringify(chunk)}`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user', content:prompt}]})
+  });
+  if(!res.ok){
+    const errBody = await res.text().catch(()=> '');
+    const e = new Error('http_'+res.status); e.code='http_'+res.status; e.detail=errBody.slice(0,300);
+    throw e;
+  }
+  const data = await res.json();
+  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+  const clean = text.replace(/```json|```/g,'').trim();
+  const arr = tryParseArray(clean);
+  if(Array.isArray(arr) && arr.length===chunk.length) return arr;
+  const e = new Error('bad_response'); e.code='bad_response';
+  throw e;
 }
 
 async function translateBlocks(blocks, onProgress){
@@ -294,9 +315,14 @@ async function translateBlocks(blocks, onProgress){
   const texts = idxs.map(i=>blocks[i].content);
   const chunks = chunkTexts(texts);
   const result = blocks.slice();
-  let ptr=0, done=0;
+  let ptr=0, done=0, failCount=0, lastErr=null;
   for(const chunk of chunks){
-    const translated = await translateChunk(chunk);
+    let translated;
+    try{
+      translated = await translateChunk(chunk);
+    }catch(e){
+      failCount++; lastErr = e; translated = chunk;
+    }
     for(let k=0;k<chunk.length;k++){
       const originalIdx = idxs[ptr]; ptr++;
       result[originalIdx] = {...result[originalIdx], content: translated[k]};
@@ -304,7 +330,7 @@ async function translateBlocks(blocks, onProgress){
     done += chunk.length;
     onProgress(texts.length ? Math.round(done/texts.length*100) : 100);
   }
-  return result;
+  return {blocks: result, failed: chunks.length>0 && failCount===chunks.length, error: lastErr};
 }
 
 const scoreboard=document.getElementById('scoreboard');
@@ -346,14 +372,24 @@ function renderArticle(title, blocks, sourceUrl){
   articleBox.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+function translationErrorMessage(err){
+  const code = err && err.code;
+  if(code === 'no_api_key') return 'Не задан API-ключ Anthropic — показан оригинал на английском. Укажите ключ в поле выше и переведите ещё раз.';
+  if(code === 'http_401' || code === 'http_403') return 'API-ключ не принят сервером — показан оригинал на английском. Проверьте ключ.';
+  if(code === 'http_429') return 'Превышен лимит запросов к API — показан оригинал на английском. Подождите немного и попробуйте снова.';
+  if(code && code.startsWith('http_')) return 'Сервис перевода вернул ошибку (' + code.slice(5) + ') — показан оригинал на английском.';
+  return 'Не удалось перевести текст — показан оригинал на английском. Попробуйте ещё раз.';
+}
+
 async function runTranslation({title, blocks, sourceUrl}){
   hideError();
   articleBox.style.display='none';
   startClock('Переводим на русский…');
   try{
-    const translated = await translateBlocks(blocks, pct => setStatus(`Переводим на русский… ${pct}%`));
+    const {blocks: translated, failed, error} = await translateBlocks(blocks, pct => setStatus(`Переводим на русский… ${pct}%`));
     stopClock();
     renderArticle(title, translated, sourceUrl);
+    if(failed) showError(translationErrorMessage(error));
     await saveToArchive(title, translated, sourceUrl);
     await renderArchiveList();
   }catch(e){
@@ -371,6 +407,7 @@ function showFetchError(msg, errors){
 translateBtn.addEventListener('click', async ()=>{
   const url = document.getElementById('urlInput').value.trim();
   if(!url){ showError('Вставьте ссылку на статью.'); return; }
+  if(!localStorage.getItem('anthropicApiKey')){ showError('Сначала укажите API-ключ Anthropic в поле выше — иначе перевод не сработает.'); return; }
   hideError(); articleBox.style.display='none';
   const errors = [];
   let extracted = null;
@@ -410,10 +447,40 @@ manualBtn.addEventListener('click', ()=>{
   const text = document.getElementById('manualText').value.trim();
   const imgLines = document.getElementById('manualImgs').value.split('\n').map(s=>s.trim()).filter(Boolean);
   if(!text){ showError('Вставьте текст статьи.'); return; }
+  if(!localStorage.getItem('anthropicApiKey')){ showError('Сначала укажите API-ключ Anthropic в поле выше — иначе перевод не сработает.'); return; }
   const blocks = text.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean).map(p=>({type:'text', content:p}));
   imgLines.forEach(src=>blocks.push({type:'image', src, caption:''}));
   runTranslation({title, blocks, sourceUrl:null});
 });
+
+const apiKeyInput = document.getElementById('apiKeyInput');
+const keyStatus = document.getElementById('keyStatus');
+
+function refreshKeyStatus(){
+  const saved = localStorage.getItem('anthropicApiKey');
+  if(saved){
+    keyStatus.textContent = 'Ключ сохранён в этом браузере ✓';
+    keyStatus.classList.add('ok');
+    apiKeyInput.placeholder = '••••••••••••••••';
+  } else {
+    keyStatus.textContent = 'Ключ не задан — без него перевод не работает. Ключ хранится только в вашем браузере и никуда не отправляется, кроме api.anthropic.com.';
+    keyStatus.classList.remove('ok');
+    apiKeyInput.placeholder = 'API-ключ Anthropic (sk-ant-...)';
+  }
+}
+
+document.getElementById('saveKeyBtn').addEventListener('click', ()=>{
+  const val = apiKeyInput.value.trim();
+  if(val){
+    localStorage.setItem('anthropicApiKey', val);
+  } else {
+    localStorage.removeItem('anthropicApiKey');
+  }
+  apiKeyInput.value = '';
+  refreshKeyStatus();
+});
+
+refreshKeyStatus();
 
 async function saveToArchive(title, blocks, sourceUrl){
   try{
