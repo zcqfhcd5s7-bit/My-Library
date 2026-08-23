@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Офсайд — футбол на русском</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Roboto+Mono:wght@400;500&display=swap');
+
+:root{
+  --pitch:#16342A;
+  --pitch-light:#2B5940;
+  --chalk:#F7F4EC;
+  --ink:#1C1C1A;
+  --gold:#D8A73D;
+  --gold-bright:#E9C067;
+  --card-red:#B23A2E;
+  --line:#DDD6C4;
+  --muted:#7A8577;
+  --font-display:'Oswald',"Arial Narrow",sans-serif;
+  --font-body:'PT Serif',Georgia,"Times New Roman",serif;
+  --font-mono:'Roboto Mono',"Courier New",monospace;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--chalk);color:var(--ink);font-family:var(--font-body);line-height:1.6;}
+
+.header{background:var(--pitch);color:var(--chalk);padding:2.4rem 1.4rem 3rem;position:relative;overflow:hidden;border-bottom:4px solid var(--gold);}
+.corner{position:absolute;width:70px;height:70px;opacity:.55;}
+.corner.tl{top:-35px;left:-35px;border-radius:0 0 100% 0;border:3px solid var(--gold-bright);border-width:0 0 3px 3px;}
+.corner.br{bottom:-35px;right:-35px;border-radius:100% 0 0 0;border:3px solid var(--gold-bright);border-width:3px 0 0 3px;}
+.wordmark{font-family:var(--font-display);font-weight:700;font-size:clamp(2rem,7vw,2.8rem);letter-spacing:.06em;text-transform:uppercase;margin:0;}
+.tagline{font-family:var(--font-mono);font-size:.78rem;letter-spacing:.07em;text-transform:uppercase;color:var(--gold-bright);margin-top:.5rem;}
+
+.panel{max-width:720px;margin:-1.8rem auto 0;background:#fff;border:1px solid var(--line);box-shadow:0 10px 26px rgba(0,0,0,.14);padding:1.5rem;position:relative;z-index:2;}
+label{display:block;font-family:var(--font-mono);font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;color:var(--pitch-light);margin-bottom:.4rem;}
+.hint{font-family:var(--font-mono);font-size:.72rem;color:var(--muted);margin-top:.5rem;}
+input[type=url], input[type=text], textarea{width:100%;padding:.75rem .9rem;border:1px solid var(--line);font-family:var(--font-body);font-size:1rem;background:var(--chalk);color:var(--ink);}
+textarea{resize:vertical;}
+input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
+.btn{font-family:var(--font-display);text-transform:uppercase;letter-spacing:.05em;font-weight:600;background:var(--gold);color:var(--pitch);border:none;padding:.8rem 1.5rem;cursor:pointer;font-size:.95rem;}
+.btn:hover:not(:disabled){background:var(--gold-bright);}
+.btn:disabled{opacity:.5;cursor:default;}
+.btn.secondary{background:transparent;border:2px solid var(--pitch);color:var(--pitch);padding:.7rem 1.4rem;}
+.row{display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap;}
+
+.scoreboard{display:none;align-items:center;gap:1rem;font-family:var(--font-mono);background:var(--pitch);color:var(--gold-bright);padding:.9rem 1.2rem;margin-top:1.1rem;}
+.clock{font-family:var(--font-display);font-size:1.6rem;font-weight:700;min-width:3.4rem;}
+
+.error{background:#FBEDEA;border:1px solid var(--card-red);color:var(--card-red);padding:.9rem 1.1rem;margin-top:1.1rem;font-family:var(--font-mono);font-size:.82rem;line-height:1.5;}
+.error summary{cursor:pointer;margin-top:.5rem;font-size:.72rem;opacity:.85;}
+.error pre{white-space:pre-wrap;word-break:break-all;font-size:.68rem;margin:.5rem 0 0;opacity:.85;}
+
+.manual{display:none;margin-top:1.3rem;border-top:1px solid var(--line);padding-top:1.3rem;}
+.manual > label{margin-top:.9rem;}
+.manual > label:first-child{margin-top:0;}
+
+.article{max-width:720px;margin:2.2rem auto;padding:0 1.2rem 3rem;display:none;}
+.article .title{font-family:var(--font-display);font-size:clamp(1.6rem,5vw,2.3rem);font-weight:700;line-height:1.15;border-bottom:3px solid var(--gold);padding-bottom:.7rem;margin:0;}
+.article .meta{font-family:var(--font-mono);font-size:.72rem;color:var(--pitch-light);text-transform:uppercase;letter-spacing:.05em;margin:.7rem 0 1.7rem;}
+.article p{font-size:1.08rem;margin:0 0 1.15rem;}
+.article .sub{font-family:var(--font-display);text-transform:uppercase;letter-spacing:.02em;font-size:1.15rem;color:var(--pitch);margin:1.9rem 0 .8rem;}
+.article figure{margin:1.7rem 0;}
+.article img{width:100%;height:auto;display:block;border:1px solid var(--line);}
+.article figcaption{font-family:var(--font-mono);font-size:.72rem;color:var(--muted);margin-top:.4rem;}
+.source-note{border-top:1px solid var(--line);margin-top:2.2rem;padding-top:1rem;font-family:var(--font-mono);font-size:.76rem;color:var(--pitch-light);word-break:break-all;}
+.source-note a{color:var(--pitch-light);}
+
+.archive{max-width:720px;margin:0 auto 3rem;padding:0 1.2rem;display:none;}
+.archive h3{font-family:var(--font-display);text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid var(--pitch);padding-bottom:.5rem;font-size:1.1rem;}
+.archive-item{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline;padding:.75rem 0;border-bottom:1px solid var(--line);cursor:pointer;}
+.archive-item:hover .archive-title{color:var(--pitch-light);text-decoration:underline;}
+.archive-title{font-weight:700;}
+.archive-date{font-family:var(--font-mono);font-size:.68rem;color:var(--muted);white-space:nowrap;}
+.archive-del{background:none;border:none;color:var(--card-red);cursor:pointer;font-family:var(--font-mono);font-size:.68rem;text-transform:uppercase;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="corner tl"></div>
+  <div class="corner br"></div>
+  <h1 class="wordmark">Офсайд</h1>
+  <div class="tagline">Мировой футбол на русском — вставь ссылку, получи перевод</div>
+</div>
+
+<div class="panel">
+  <label for="urlInput">Ссылка на статью</label>
+  <input type="url" id="urlInput" placeholder="https://www.theguardian.com/football/...">
+  <div class="hint">Работает с большинством новостных сайтов. Платные и сильно JS-зависимые сайты иногда не открываются — тогда используйте вставку текста.</div>
+  <div class="row">
+    <button class="btn" id="translateBtn" type="button">Перевести статью</button>
+    <button class="btn secondary" id="manualToggle" type="button">Вставить текст вручную</button>
+  </div>
+
+  <div class="manual" id="manualBlock">
+    <label for="manualTitle">Заголовок (необязательно)</label>
+    <input type="text" id="manualTitle" placeholder="Название статьи">
+    <label for="manualText">Текст статьи</label>
+    <textarea id="manualText" rows="8" placeholder="Вставьте текст статьи — абзацы разделяйте пустой строкой"></textarea>
+    <label for="manualImgs">Ссылки на фото/графики (по одной в строке, необязательно)</label>
+    <textarea id="manualImgs" rows="3" placeholder="https://.../photo.jpg"></textarea>
+    <div class="row">
+      <button class="btn" id="manualBtn" type="button">Перевести этот текст</button>
+    </div>
+  </div>
+
+  <div class="scoreboard" id="scoreboard">
+    <div class="clock" id="clock">0'</div>
+    <div id="statusText">Загружаем статью…</div>
+  </div>
+  <div class="error" id="errorBox"></div>
+</div>
+
+<div class="article" id="articleBox"></div>
+
+<div class="archive" id="archiveBox">
+  <h3>Переведённые статьи</h3>
+  <div id="archiveList"></div>
+</div>
+
+<script>
+const PROXIES = [
+  u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+  u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  u => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+];
+
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function fetchWithTimeout(url, ms=14000){
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), ms);
+  try{
+    const res = await fetch(url, {signal: ctrl.signal});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    return await res.text();
+  } finally { clearTimeout(t); }
+}
+
+async function fetchArticleHtml(url, errors){
+  for(const build of PROXIES){
+    const proxyUrl = build(url);
+    try{
+      const html = await fetchWithTimeout(proxyUrl);
+      if(html && html.length > 500) return html;
+      errors.push(proxyUrl.split('/')[2] + ': пустой ответ');
+    }catch(e){ errors.push(proxyUrl.split('/')[2] + ': ' + (e.message||e)); }
+  }
+  return null;
+}
+
+async function fetchViaJina(url, errors){
+  const jinaUrl = 'https://r.jina.ai/' + url;
+  try{
+    const text = await fetchWithTimeout(jinaUrl, 18000);
+    if(text && text.length > 300) return text;
+    errors.push('r.jina.ai: пустой ответ');
+  }catch(e){ errors.push('r.jina.ai: ' + (e.message||e)); }
+  return null;
+}
+
+function extractFromJina(markdown, sourceUrl){
+  let title = 'Без названия';
+  const titleMatch = markdown.match(/^Title:\s*(.+)$/m);
+  if(titleMatch) title = titleMatch[1].trim();
+  let body = markdown;
+  const bodyIdx = markdown.indexOf('Markdown Content:');
+  if(bodyIdx >= 0) body = markdown.slice(bodyIdx + 'Markdown Content:'.length);
+
+  const blocks = [];
+  const seen = new Set();
+  const JUNK = ['subscribe to','sign up for','follow us on','advertisement','cookie policy','newsletter','privacy policy','terms of service','all rights reserved'];
+  const paras = body.split(/\n\s*\n/);
+  for(const raw of paras){
+    let chunk = raw.trim();
+    if(!chunk) continue;
+    const imgRe = /!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g;
+    let m;
+    while((m = imgRe.exec(raw))){
+      let src = m[2];
+      try{ src = new URL(src, sourceUrl).href; }catch(e){ continue; }
+      if(seen.has(src)) continue;
+      seen.add(src);
+      blocks.push({type:'image', src, caption: m[1]||''});
+    }
+    chunk = chunk.replace(imgRe, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
+    if(!chunk) continue;
+    if(/^#{1,6}\s/.test(chunk)){
+      const t = chunk.replace(/^#{1,6}\s*/, '').trim();
+      if(t) blocks.push({type:'subheading', content:t});
+      continue;
+    }
+    const low = chunk.toLowerCase();
+    if(chunk.length < 200 && JUNK.some(j=>low.includes(j))) continue;
+    if(chunk.length > 40) blocks.push({type:'text', content: chunk});
+  }
+  return {title, blocks};
+}
+
+function extractArticle(html, baseUrl){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script,style,noscript,iframe,nav,footer,form,aside').forEach(el=>el.remove());
+
+  let title = doc.querySelector('meta[property="og:title"]')?.getAttribute('content')
+    || doc.querySelector('h1')?.textContent
+    || doc.title || 'Без названия';
+  title = title.trim().replace(/\s+/g,' ');
+
+  const candidates = Array.from(doc.querySelectorAll('article, main, div, section'));
+  let best=null, bestScore=0;
+  for(const el of candidates){
+    let textLen=0; el.querySelectorAll('p').forEach(p=>textLen+=p.textContent.trim().length);
+    if(textLen < 200) continue;
+    let linkLen=0; el.querySelectorAll('a').forEach(a=>linkLen+=a.textContent.trim().length);
+    const score = textLen - linkLen*0.5;
+    if(score>bestScore){ bestScore=score; best=el; }
+  }
+  if(!best || bestScore < 250) return null;
+
+  const blocks=[]; const seen=new Set();
+  function addImg(imgEl, caption){
+    let src = imgEl.getAttribute('src') || imgEl.getAttribute('data-src');
+    if(!src) return;
+    try{ src = new URL(src, baseUrl).href; }catch(e){ return; }
+    if(seen.has(src)) return;
+    const w=parseInt(imgEl.getAttribute('width')||'0'), h=parseInt(imgEl.getAttribute('height')||'0');
+    if((w && w<150) || (h && h<150)) return;
+    seen.add(src);
+    blocks.push({type:'image', src, caption: caption || imgEl.getAttribute('alt') || ''});
+  }
+  function walk(node){
+    for(const child of Array.from(node.children)){
+      const tag = child.tagName.toLowerCase();
+      if(tag==='p'){
+        const t=child.textContent.trim();
+        if(t.length>40) blocks.push({type:'text', content:t});
+      } else if(tag==='img'){
+        addImg(child);
+      } else if(tag==='figure'){
+        const img=child.querySelector('img');
+        if(img) addImg(img, child.querySelector('figcaption')?.textContent.trim());
+      } else if(tag==='h2' || tag==='h3'){
+        const t=child.textContent.trim();
+        if(t) blocks.push({type:'subheading', content:t});
+      } else {
+        walk(child);
+      }
+    }
+  }
+  walk(best);
+  return {title, blocks};
+}
+
+function chunkTexts(texts, maxChars=450){
+  const chunks=[]; let cur=[]; let len=0;
+  for(const t of texts){
+    if(len + t.length > maxChars && cur.length){ chunks.push(cur); cur=[]; len=0; }
+    cur.push(t); len += t.length;
+  }
+  if(cur.length) chunks.push(cur);
+  return chunks;
+}
+
+function tryParseArray(s){
+  try{ return JSON.parse(s); }catch(e){}
+  const start=s.indexOf('['), end=s.lastIndexOf(']');
+  if(start>=0 && end>start){
+    try{ return JSON.parse(s.slice(start,end+1)); }catch(e){}
+  }
+  return null;
+}
+
+async function translateChunk(chunk){
+  const prompt = `Переведи этот JSON-массив абзацев футбольной (соккер) статьи на естественный, беглый русский язык, в стиле русской спортивной журналистики (как Sports.ru, Championat). Имена клубов и игроков передавай в принятой в русских спортивных СМИ транслитерации. Сохрани точное количество элементов массива и их порядок. Ответь ТОЛЬКО чистым JSON-массивом строк — без маркдна, без блоков кода, без пояснений.\n\n${JSON.stringify(chunk)}`;
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({model:'claude-sonnet-4-6', max_tokens:1000, messages:[{role:'user', content:prompt}]})
+    });
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const clean = text.replace(/```json|```/g,'').trim();
+    const arr = tryParseArray(clean);
+    if(Array.isArray(arr) && arr.length===chunk.length) return arr;
+  }catch(e){ /* fall through to untranslated fallback */ }
+  return chunk;
+}
+
+async function translateBlocks(blocks, onProgress){
+  const idxs = blocks.map((b,i)=> b.type!=='image' ? i : -1).filter(i=>i>=0);
+  const texts = idxs.map(i=>blocks[i].content);
+  const chunks = chunkTexts(texts);
+  const result = blocks.slice();
+  let ptr=0, done=0;
+  for(const chunk of chunks){
+    const translated = await translateChunk(chunk);
+    for(let k=0;k<chunk.length;k++){
+      const originalIdx = idxs[ptr]; ptr++;
+      result[originalIdx] = {...result[originalIdx], content: translated[k]};
+    }
+    done += chunk.length;
+    onProgress(texts.length ? Math.round(done/texts.length*100) : 100);
+  }
+  return result;
+}
+
+const scoreboard=document.getElementById('scoreboard');
+const clockEl=document.getElementById('clock');
+const statusText=document.getElementById('statusText');
+const errorBox=document.getElementById('errorBox');
+const articleBox=document.getElementById('articleBox');
+const translateBtn=document.getElementById('translateBtn');
+const manualBtn=document.getElementById('manualBtn');
+let clockTimer=null, minute=0;
+
+function startClock(msg){
+  minute=0; clockEl.textContent="0'";
+  statusText.textContent = msg;
+  scoreboard.style.display='flex';
+  translateBtn.disabled = true; manualBtn.disabled = true;
+  clockTimer = setInterval(()=>{ minute++; clockEl.textContent = (minute<=90?minute:('90+'+(minute-90)))+"'"; }, 700);
+}
+function stopClock(){
+  clearInterval(clockTimer);
+  scoreboard.style.display='none';
+  translateBtn.disabled = false; manualBtn.disabled = false;
+}
+function setStatus(t){ statusText.textContent=t; }
+function showError(msg){ errorBox.textContent=msg; errorBox.style.display='block'; }
+function hideError(){ errorBox.style.display='none'; }
+
+function renderArticle(title, blocks, sourceUrl){
+  let html = `<h2 class="title">${escapeHtml(title)}</h2>`;
+  html += `<div class="meta">${sourceUrl ? ('Источник: '+escapeHtml(new URL(sourceUrl).hostname)) : 'Вставлено вручную'} · ${new Date().toLocaleDateString('ru-RU')}</div>`;
+  for(const b of blocks){
+    if(b.type==='text') html += `<p>${escapeHtml(b.content)}</p>`;
+    else if(b.type==='subheading') html += `<h3 class="sub">${escapeHtml(b.content)}</h3>`;
+    else if(b.type==='image') html += `<figure><img src="${b.src}" alt="" loading="lazy">${b.caption?('<figcaption>'+escapeHtml(b.caption)+'</figcaption>'):''}</figure>`;
+  }
+  if(sourceUrl) html += `<div class="source-note">Оригинал: <a href="${sourceUrl}" target="_blank" rel="noopener">${escapeHtml(sourceUrl)}</a></div>`;
+  articleBox.innerHTML = html;
+  articleBox.style.display='block';
+  articleBox.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function runTranslation({title, blocks, sourceUrl}){
+  hideError();
+  articleBox.style.display='none';
+  startClock('Переводим на русский…');
+  try{
+    const translated = await translateBlocks(blocks, pct => setStatus(`Переводим на русский… ${pct}%`));
+    stopClock();
+    renderArticle(title, translated, sourceUrl);
+    await saveToArchive(title, translated, sourceUrl);
+    await renderArchiveList();
+  }catch(e){
+    stopClock();
+    showError('Не получилось перевести статью. Попробуйте ещё раз.');
+  }
+}
+
+function showFetchError(msg, errors){
+  errorBox.innerHTML = escapeHtml(msg) +
+    (errors && errors.length ? `<details><summary>Показать детали (${errors.length})</summary><pre>${escapeHtml(errors.join('\n'))}</pre></details>` : '');
+  errorBox.style.display='block';
+}
+
+translateBtn.addEventListener('click', async ()=>{
+  const url = document.getElementById('urlInput').value.trim();
+  if(!url){ showError('Вставьте ссылку на статью.'); return; }
+  hideError(); articleBox.style.display='none';
+  const errors = [];
+  let extracted = null;
+
+  startClock('Загружаем статью…');
+  const md = await fetchViaJina(url, errors);
+  if(md){
+    extracted = extractFromJina(md, url);
+    if(!extracted.blocks.length) extracted = null;
+  }
+
+  if(!extracted){
+    setStatus('Пробуем другой способ…');
+    const html = await fetchArticleHtml(url, errors);
+    if(html){
+      extracted = extractArticle(html, url);
+      if(extracted && !extracted.blocks.length) extracted = null;
+    }
+  }
+
+  stopClock();
+  if(!extracted){
+    showFetchError('Не удалось загрузить статью автоматически — сайт блокирует внешний доступ или требует вход. Вставьте текст статьи вручную ниже.', errors);
+    document.getElementById('manualBlock').style.display='block';
+    return;
+  }
+  runTranslation({title: extracted.title, blocks: extracted.blocks, sourceUrl: url});
+});
+
+document.getElementById('manualToggle').addEventListener('click', ()=>{
+  const el=document.getElementById('manualBlock');
+  el.style.display = el.style.display==='block' ? 'none' : 'block';
+});
+
+manualBtn.addEventListener('click', ()=>{
+  const title = document.getElementById('manualTitle').value.trim() || 'Без названия';
+  const text = document.getElementById('manualText').value.trim();
+  const imgLines = document.getElementById('manualImgs').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!text){ showError('Вставьте текст статьи.'); return; }
+  const blocks = text.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean).map(p=>({type:'text', content:p}));
+  imgLines.forEach(src=>blocks.push({type:'image', src, caption:''}));
+  runTranslation({title, blocks, sourceUrl:null});
+});
+
+async function saveToArchive(title, blocks, sourceUrl){
+  try{
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+    await window.storage.set('article:'+id, JSON.stringify({title, blocks, sourceUrl, date:new Date().toISOString()}));
+    let idx=[];
+    try{ const r = await window.storage.get('articles-index'); idx = r ? JSON.parse(r.value) : []; }catch(e){ idx=[]; }
+    idx.unshift({id, title, sourceUrl, date:new Date().toISOString()});
+    idx = idx.slice(0,50);
+    await window.storage.set('articles-index', JSON.stringify(idx));
+  }catch(e){ /* archive is a bonus feature — safe to skip on failure */ }
+}
+
+async function renderArchiveList(){
+  const box=document.getElementById('archiveBox');
+  const list=document.getElementById('archiveList');
+  let idx=[];
+  try{ const r = await window.storage.get('articles-index'); idx = r ? JSON.parse(r.value) : []; }catch(e){ idx=[]; }
+  if(!idx.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  list.innerHTML = idx.map(a => `
+    <div class="archive-item" data-id="${a.id}">
+      <div><div class="archive-title">${escapeHtml(a.title)}</div><div class="archive-date">${new Date(a.date).toLocaleDateString('ru-RU')}</div></div>
+      <button class="archive-del" data-id="${a.id}" type="button">Удалить</button>
+    </div>`).join('');
+  list.querySelectorAll('.archive-item').forEach(item=>{
+    item.addEventListener('click', async (e)=>{
+      if(e.target.classList.contains('archive-del')) return;
+      const id=item.getAttribute('data-id');
+      try{
+        const r = await window.storage.get('article:'+id);
+        const data = JSON.parse(r.value);
+        hideError();
+        renderArticle(data.title, data.blocks, data.sourceUrl);
+      }catch(err){ showError('Не удалось открыть сохранённую статью.'); }
+    });
+  });
+  list.querySelectorAll('.archive-del').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const id=btn.getAttribute('data-id');
+      try{
+        await window.storage.delete('article:'+id);
+        let idx=[]; const r = await window.storage.get('articles-index'); idx = r ? JSON.parse(r.value) : [];
+        idx = idx.filter(a=>a.id!==id);
+        await window.storage.set('articles-index', JSON.stringify(idx));
+        renderArchiveList();
+      }catch(err){}
+    });
+  });
+}
+
+renderArchiveList();
+</script>
+</body>
+</html>
