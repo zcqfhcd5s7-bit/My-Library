@@ -122,6 +122,10 @@ input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
 </div>
 
 <div class="article" id="articleBox"></div>
+<div class="row" id="notionRow" style="display:none;max-width:720px;margin:-1.4rem auto 0;padding:0 1.2rem;">
+  <button class="btn secondary" id="copyNotionBtn" type="button">Скопировать для Notion</button>
+  <span class="hint" id="notionStatus" style="margin-top:0;align-self:center;"></span>
+</div>
 
 <div class="archive" id="archiveBox">
   <h3>Переведённые статьи</h3>
@@ -341,6 +345,7 @@ const articleBox=document.getElementById('articleBox');
 const translateBtn=document.getElementById('translateBtn');
 const manualBtn=document.getElementById('manualBtn');
 let clockTimer=null, minute=0;
+let lastRendered=null;
 
 function startClock(msg){
   minute=0; clockEl.textContent="0'";
@@ -370,6 +375,9 @@ function renderArticle(title, blocks, sourceUrl){
   articleBox.innerHTML = html;
   articleBox.style.display='block';
   articleBox.scrollIntoView({behavior:'smooth', block:'start'});
+  lastRendered = {title, blocks, sourceUrl};
+  document.getElementById('notionRow').style.display='flex';
+  document.getElementById('notionStatus').textContent='';
 }
 
 function translationErrorMessage(err){
@@ -461,7 +469,7 @@ function refreshKeyStatus(){
   if(saved){
     keyStatus.textContent = 'Ключ сохранён в этом браузере ✓';
     keyStatus.classList.add('ok');
-    apiKeyInput.placeholder = '••••••••••••••••';
+    apiKeyInput.placeholder = '•••••••••••••••';
   } else {
     keyStatus.textContent = 'Ключ не задан — без него перевод не работает. Ключ хранится только в вашем браузере и никуда не отправляется, кроме api.anthropic.com.';
     keyStatus.classList.remove('ok');
@@ -534,6 +542,29 @@ async function renderArchiveList(){
 }
 
 renderArchiveList();
+
+function buildMarkdownForNotion(title, blocks, sourceUrl){
+  let md = `# ${title}\n\n`;
+  if(sourceUrl) md += `Источник: ${sourceUrl}\n\n`;
+  for(const b of blocks){
+    if(b.type === 'subheading') md += `## ${b.content}\n\n`;
+    else if(b.type === 'text') md += `${b.content}\n\n`;
+    else if(b.type === 'image') md += `${b.caption ? b.caption + ' — ' : ''}${b.src}\n\n`;
+  }
+  return md.trim() + '\n';
+}
+
+document.getElementById('copyNotionBtn').addEventListener('click', async ()=>{
+  const status = document.getElementById('notionStatus');
+  if(!lastRendered){ status.textContent = 'Нет статьи для экспорта.'; return; }
+  const md = buildMarkdownForNotion(lastRendered.title, lastRendered.blocks, lastRendered.sourceUrl);
+  try{
+    await navigator.clipboard.writeText(md);
+    status.textContent = 'Скопировано ✓ Вставьте в новую страницу Notion (Ctrl+V).';
+  }catch(e){
+    status.textContent = 'Не удалось скопировать автоматически — скопируйте текст вручную.';
+  }
+});
 </script>
 </body>
 </html>
