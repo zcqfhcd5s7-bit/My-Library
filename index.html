@@ -94,6 +94,7 @@ input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
   <div class="row">
     <button class="btn" id="translateBtn" type="button">Перевести статью</button>
     <button class="btn secondary" id="manualToggle" type="button">Вставить текст вручную</button>
+    <button class="btn secondary" id="pdfToggle" type="button">Загрузить PDF</button>
   </div>
 
   <div class="key-row">
@@ -502,6 +503,11 @@ translateBtn.addEventListener('click', async ()=>{
 document.getElementById('manualToggle').addEventListener('click', ()=>{
   const el=document.getElementById('manualBlock');
   el.style.display = el.style.display==='block' ? 'none' : 'block';
+});
+
+document.getElementById('pdfToggle').addEventListener('click', ()=>{
+  document.getElementById('manualBlock').style.display = 'block';
+  document.getElementById('pdfInput').click();
 });
 
 document.getElementById('pdfInput').addEventListener('change', async (e)=>{
