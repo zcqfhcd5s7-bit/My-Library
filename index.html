@@ -102,6 +102,13 @@ input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
   </div>
   <div class="key-status" id="keyStatus"></div>
 
+  <div class="key-row">
+    <input type="password" id="githubTokenInput" placeholder="GitHub-токен (для архива на всех устройствах)">
+    <button class="btn secondary" id="saveGithubBtn" type="button">Сохранить токен</button>
+  </div>
+  <div class="key-status" id="githubKeyStatus"></div>
+  <div class="hint" id="githubHint">Нужен, только чтобы СОХРАНЯТЬ переводы в общий архив — читать сохранённое можно с любого устройства и без токена. Как получить: github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → New token → доступ только к репозиторию My-Library → разрешение «Contents: Read and write».</div>
+
   <div class="manual" id="manualBlock">
     <label for="manualTitle">Заголовок (необязательно)</label>
     <input type="text" id="manualTitle" placeholder="Название статьи">
@@ -129,6 +136,7 @@ input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
 
 <div class="archive" id="archiveBox">
   <h3>Переведённые статьи</h3>
+  <div class="hint" id="archiveStatus" style="margin:0 0 .8rem;"></div>
   <div id="archiveList"></div>
 </div>
 
@@ -398,8 +406,8 @@ async function runTranslation({title, blocks, sourceUrl}){
     stopClock();
     renderArticle(title, translated, sourceUrl);
     if(failed) showError(translationErrorMessage(error));
-    await saveToArchive(title, translated, sourceUrl);
-    await renderArchiveList();
+    const idx = await saveToArchive(title, translated, sourceUrl);
+    await renderArchiveList(idx || undefined);
   }catch(e){
     stopClock();
     showError('Не получилось перевести статью. Попробуйте ещё раз.');
@@ -490,41 +498,136 @@ document.getElementById('saveKeyBtn').addEventListener('click', ()=>{
 
 refreshKeyStatus();
 
-function archiveGetIndex(){
-  try{ const raw = localStorage.getItem('articles-index'); return raw ? JSON.parse(raw) : []; }
-  catch(e){ return []; }
+const githubTokenInput = document.getElementById('githubTokenInput');
+const githubKeyStatus = document.getElementById('githubKeyStatus');
+
+function refreshGithubKeyStatus(){
+  const saved = localStorage.getItem('githubPat');
+  if(saved){
+    githubKeyStatus.textContent = 'Токен сохранён в этом браузере ✓ — переводы будут попадать в общий архив.';
+    githubKeyStatus.classList.add('ok');
+    githubTokenInput.placeholder = '••••••••••••••••';
+  } else {
+    githubKeyStatus.textContent = 'Токен не задан — переводы будут видны только в этом браузере, не попадут в общий архив на других устройствах.';
+    githubKeyStatus.classList.remove('ok');
+    githubTokenInput.placeholder = 'GitHub-токен (для архива на всех устройствах)';
+  }
 }
-function archiveSetIndex(idx){
-  try{ localStorage.setItem('articles-index', JSON.stringify(idx)); }catch(e){ /* storage full or unavailable */ }
+
+document.getElementById('saveGithubBtn').addEventListener('click', ()=>{
+  const val = githubTokenInput.value.trim();
+  if(val){
+    localStorage.setItem('githubPat', val);
+  } else {
+    localStorage.removeItem('githubPat');
+  }
+  githubTokenInput.value = '';
+  refreshGithubKeyStatus();
+});
+
+refreshGithubKeyStatus();
+
+// --- Cloud archive: stored as JSON files in this same GitHub repo, so any device can read it ---
+const GH_OWNER = 'zcqfhcd5s7-bit';
+const GH_REPO = 'My-Library';
+const GH_BRANCH = 'main';
+const GH_API = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents`;
+const GH_RAW = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}`;
+
+function githubToken(){ return localStorage.getItem('githubPat') || ''; }
+function utf8ToB64(str){ return btoa(unescape(encodeURIComponent(str))); }
+function b64ToUtf8(str){ return decodeURIComponent(escape(atob(str.replace(/\n/g,'')))); }
+
+async function ghGetFile(path){
+  const token = githubToken();
+  const headers = {'Accept':'application/vnd.github+json'};
+  if(token) headers.Authorization = 'Bearer '+token;
+  const res = await fetch(`${GH_API}/${path}?ref=${GH_BRANCH}`, {headers});
+  if(res.status===404) return null;
+  if(!res.ok){ const e = new Error('gh_'+res.status); e.code='gh_'+res.status; throw e; }
+  const data = await res.json();
+  return {sha: data.sha, text: b64ToUtf8(data.content)};
+}
+
+async function ghPutFile(path, content, message, sha){
+  const token = githubToken();
+  if(!token){ const e = new Error('no_token'); e.code='no_token'; throw e; }
+  const body = {message, content: utf8ToB64(content), branch: GH_BRANCH};
+  if(sha) body.sha = sha;
+  const res = await fetch(`${GH_API}/${path}`, {
+    method:'PUT',
+    headers:{Authorization:'Bearer '+token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if(!res.ok){
+    const errBody = await res.text().catch(()=> '');
+    const e = new Error('gh_'+res.status); e.code='gh_'+res.status; e.detail=errBody.slice(0,300);
+    throw e;
+  }
+  return await res.json();
+}
+
+async function ghDeleteFile(path, message, sha){
+  const token = githubToken();
+  if(!token){ const e = new Error('no_token'); e.code='no_token'; throw e; }
+  const res = await fetch(`${GH_API}/${path}`, {
+    method:'DELETE',
+    headers:{Authorization:'Bearer '+token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'},
+    body: JSON.stringify({message, sha, branch: GH_BRANCH})
+  });
+  if(!res.ok){ const e = new Error('gh_'+res.status); e.code='gh_'+res.status; throw e; }
+}
+
+async function fetchIndexPublic(){
+  try{
+    const res = await fetch(`${GH_RAW}/articles/index.json?_=${Date.now()}`, {cache:'no-store'});
+    if(!res.ok) return [];
+    return await res.json();
+  }catch(e){ return []; }
+}
+
+function archiveErrorMessage(err){
+  const code = err && err.code;
+  if(code === 'no_token') return 'Не сохранено в общий архив — укажите GitHub-токен выше.';
+  if(code === 'gh_401' || code === 'gh_403') return 'GitHub не принял токен — проверьте его (нужно разрешение Contents: Read and write для репозитория My-Library).';
+  if(code === 'gh_404') return 'GitHub вернул «не найдено» — проверьте токен и доступ к репозиторию.';
+  if(code && code.startsWith('gh_')) return 'Не удалось сохранить в архив — ошибка GitHub (' + code.slice(3) + ').';
+  return 'Не удалось сохранить в общий архив. Попробуйте ещё раз.';
 }
 
 async function saveToArchive(title, blocks, sourceUrl){
+  const statusEl = document.getElementById('archiveStatus');
+  if(!githubToken()){
+    if(statusEl) statusEl.textContent = 'Не сохранено в общий архив — укажите GitHub-токен выше, чтобы читать переводы с любых устройств.';
+    return null;
+  }
   try{
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-    const record = JSON.stringify({title, blocks, sourceUrl, date:new Date().toISOString()});
-    let idx = archiveGetIndex();
+    const date = new Date().toISOString();
+    const record = JSON.stringify({title, blocks, sourceUrl, date});
+    await ghPutFile(`articles/${id}.json`, record, 'Статья: '+title);
+
+    let idx = [], sha = null;
     try{
-      localStorage.setItem('article:'+id, record);
-    }catch(e){
-      // storage full — drop the oldest saved articles and try again
-      while(idx.length && (e && (e.name==='QuotaExceededError' || true))){
-        const oldest = idx.pop();
-        if(!oldest) break;
-        try{ localStorage.removeItem('article:'+oldest.id); }catch(_e){}
-        try{ localStorage.setItem('article:'+id, record); e=null; break; }catch(e2){ e=e2; if(!idx.length) break; }
-      }
-    }
-    idx.unshift({id, title, sourceUrl, date:new Date().toISOString()});
-    idx = idx.slice(0,50);
-    archiveSetIndex(idx);
-  }catch(e){ /* archive is a bonus feature — safe to skip on failure */ }
+      const cur = await ghGetFile('articles/index.json');
+      if(cur){ idx = JSON.parse(cur.text); sha = cur.sha; }
+    }catch(e){ idx = []; }
+    idx.unshift({id, title, sourceUrl, date});
+    idx = idx.slice(0, 300);
+    await ghPutFile('articles/index.json', JSON.stringify(idx), 'Обновлён список статей', sha);
+    if(statusEl) statusEl.textContent = 'Сохранено в общий архив ✓ — доступно с любого устройства.';
+    return idx;
+  }catch(e){
+    if(statusEl) statusEl.textContent = archiveErrorMessage(e);
+    return null;
+  }
 }
 
-async function renderArchiveList(){
+async function renderArchiveList(preloadedIdx){
   const box=document.getElementById('archiveBox');
   const list=document.getElementById('archiveList');
-  const idx = archiveGetIndex();
-  if(!idx.length){ box.style.display='none'; return; }
+  const idx = preloadedIdx || await fetchIndexPublic();
+  if(!idx || !idx.length){ box.style.display='none'; return; }
   box.style.display='block';
   list.innerHTML = idx.map(a => `
     <div class="archive-item" data-id="${a.id}">
@@ -532,29 +635,33 @@ async function renderArchiveList(){
       <button class="archive-del" data-id="${a.id}" type="button">Удалить</button>
     </div>`).join('');
   list.querySelectorAll('.archive-item').forEach(item=>{
-    item.addEventListener('click', (e)=>{
+    item.addEventListener('click', async (e)=>{
       if(e.target.classList.contains('archive-del')) return;
       const id=item.getAttribute('data-id');
       try{
-        const raw = localStorage.getItem('article:'+id);
-        if(!raw) throw new Error('missing');
-        const data = JSON.parse(raw);
+        const res = await fetch(`${GH_RAW}/articles/${id}.json?_=${Date.now()}`, {cache:'no-store'});
+        if(!res.ok) throw new Error('missing');
+        const data = await res.json();
         hideError();
         renderArticle(data.title, data.blocks, data.sourceUrl);
-      }catch(err){ showError('Не удалось открыть сохранённую статью — возможно, она была удалена из памяти браузера.'); }
+      }catch(err){ showError('Не удалось открыть сохранённую статью.'); }
     });
   });
   list.querySelectorAll('.archive-del').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
+    btn.addEventListener('click', async (e)=>{
       e.stopPropagation();
+      const statusEl = document.getElementById('archiveStatus');
+      if(!githubToken()){ if(statusEl) statusEl.textContent='Для удаления из общего архива укажите GitHub-токен выше.'; return; }
       const id=btn.getAttribute('data-id');
       try{
-        localStorage.removeItem('article:'+id);
-        let idx = archiveGetIndex();
-        idx = idx.filter(a=>a.id!==id);
-        archiveSetIndex(idx);
-        renderArchiveList();
-      }catch(err){}
+        const cur = await ghGetFile(`articles/${id}.json`);
+        if(cur) await ghDeleteFile(`articles/${id}.json`, 'Удалена статья', cur.sha);
+        const curIdx = await ghGetFile('articles/index.json');
+        let idx2 = curIdx ? JSON.parse(curIdx.text) : [];
+        idx2 = idx2.filter(a=>a.id!==id);
+        await ghPutFile('articles/index.json', JSON.stringify(idx2), 'Удалена статья из списка', curIdx ? curIdx.sha : null);
+        renderArchiveList(idx2);
+      }catch(err){ if(statusEl) statusEl.textContent = archiveErrorMessage(err); }
     });
   });
 }
