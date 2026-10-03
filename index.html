@@ -209,6 +209,17 @@ function isJunk(t){
   return JUNK.some(j=>low.includes(j));
 }
 
+const IMG_JUNK = [
+  'doubleclick','googlesyndication','googleadservices','google_ads','adservice','amazon-adsystem',
+  'outbrain','taboola','scorecardresearch','adsystem','adnxs','criteo','pubmatic','rubiconproject',
+  'moatads','quantserve','adroll','bat.bing','facebook.com/tr','/pixel/','tracking-pixel',
+  'beacon.','spacer.gif','blank.gif','1x1.','transparent.gif','gravatar','placeholder'
+];
+function isJunkImage(src){
+  const low = (src||'').toLowerCase();
+  return IMG_JUNK.some(j=>low.includes(j));
+}
+
 function extractFromJina(markdown, sourceUrl){
   let title = 'Без названия';
   const titleMatch = markdown.match(/^Title:\s*(.+)$/m);
@@ -228,7 +239,7 @@ function extractFromJina(markdown, sourceUrl){
     while((m = imgRe.exec(raw))){
       let src = m[2];
       try{ src = new URL(src, sourceUrl).href; }catch(e){ continue; }
-      if(seen.has(src)) continue;
+      if(seen.has(src) || isJunkImage(src)) continue;
       seen.add(src);
       blocks.push({type:'image', src, caption: m[1]||''});
     }
@@ -279,7 +290,7 @@ function extractArticle(html, baseUrl){
     let src = imgEl.getAttribute('src') || imgEl.getAttribute('data-src');
     if(!src) return;
     try{ src = new URL(src, baseUrl).href; }catch(e){ return; }
-    if(seen.has(src)) return;
+    if(seen.has(src) || isJunkImage(src)) return;
     const w=parseInt(imgEl.getAttribute('width')||'0'), h=parseInt(imgEl.getAttribute('height')||'0');
     if((w && w<150) || (h && h<150)) return;
     seen.add(src);
