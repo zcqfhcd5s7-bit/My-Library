@@ -110,6 +110,9 @@ input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
   <div class="hint" id="githubHint">Нужен, только чтобы СОХРАНЯТЬ переводы в общий архив — читать сохранённое можно с любого устройства и без токена. Как получить: github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → New token → доступ только к репозиторию My-Library → разрешение «Contents: Read and write».</div>
 
   <div class="manual" id="manualBlock">
+    <label for="pdfInput">Или загрузите PDF — текст вытащим автоматически и вставим ниже для проверки</label>
+    <input type="file" id="pdfInput" accept="application/pdf">
+    <div class="hint" id="pdfStatus"></div>
     <label for="manualTitle">Заголовок (необязательно)</label>
     <input type="text" id="manualTitle" placeholder="Название статьи">
     <label for="manualText">Текст статьи</label>
@@ -140,6 +143,12 @@ input:focus, textarea:focus{outline:2px solid var(--gold);outline-offset:1px;}
   <div id="archiveList"></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if(window.pdfjsLib){
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
 <script>
 const PROXIES = [
   u => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
@@ -183,6 +192,23 @@ async function fetchViaJina(url, errors){
   return null;
 }
 
+const JUNK = [
+  'subscribe to','sign up for','sign up to','follow us on','advertisement','advertising feature',
+  'cookie policy','newsletter','privacy policy','terms of service','terms and conditions',
+  'all rights reserved','related articles','related:','read more:','you might also like',
+  'most read','most popular','trending now','share this article','share on facebook',
+  'share on twitter','share on whatsapp','comments (','show comments','load more comments',
+  'back to top','skip past newsletter','after newsletter promotion','this article is more than',
+  'download our app','manage my preferences','in partnership with','sponsored content',
+  'promoted content','view image in fullscreen','free bets','bet now','best odds',
+  'click here to','getty images','associated press','(ap) —','continue reading',
+  'to read more','log in to continue','register for free','create a free account'
+];
+function isJunk(t){
+  const low = t.toLowerCase();
+  return JUNK.some(j=>low.includes(j));
+}
+
 function extractFromJina(markdown, sourceUrl){
   let title = 'Без названия';
   const titleMatch = markdown.match(/^Title:\s*(.+)$/m);
@@ -193,7 +219,6 @@ function extractFromJina(markdown, sourceUrl){
 
   const blocks = [];
   const seen = new Set();
-  const JUNK = ['subscribe to','sign up for','follow us on','advertisement','cookie policy','newsletter','privacy policy','terms of service','all rights reserved'];
   const paras = body.split(/\n\s*\n/);
   for(const raw of paras){
     let chunk = raw.trim();
@@ -214,16 +239,24 @@ function extractFromJina(markdown, sourceUrl){
       if(t) blocks.push({type:'subheading', content:t});
       continue;
     }
-    const low = chunk.toLowerCase();
-    if(chunk.length < 200 && JUNK.some(j=>low.includes(j))) continue;
+    if(chunk.length < 220 && isJunk(chunk)) continue;
     if(chunk.length > 40) blocks.push({type:'text', content: chunk});
   }
   return {title, blocks};
 }
 
+const AD_SELECTOR = [
+  'script','style','noscript','iframe','nav','footer','form','aside',
+  '[class*="ad-" i]','[class*="advert" i]','[id*="advert" i]','[class*="ads" i]',
+  '[class*="promo" i]','[class*="newsletter" i]','[class*="social" i]','[class*="share" i]',
+  '[class*="related" i]','[class*="comment" i]','[class*="sponsor" i]','[class*="cookie" i]',
+  '[class*="subscribe" i]','[class*="paywall" i]','[class*="recirc" i]','[class*="widget" i]',
+  '[class*="banner" i]','[class*="popup" i]','[class*="modal" i]','[class*="trending" i]'
+].join(',');
+
 function extractArticle(html, baseUrl){
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  doc.querySelectorAll('script,style,noscript,iframe,nav,footer,form,aside').forEach(el=>el.remove());
+  doc.querySelectorAll(AD_SELECTOR).forEach(el=>el.remove());
 
   let title = doc.querySelector('meta[property="og:title"]')?.getAttribute('content')
     || doc.querySelector('h1')?.textContent
@@ -257,7 +290,9 @@ function extractArticle(html, baseUrl){
       const tag = child.tagName.toLowerCase();
       if(tag==='p'){
         const t=child.textContent.trim();
-        if(t.length>40) blocks.push({type:'text', content:t});
+        let linkLen=0; child.querySelectorAll('a').forEach(a=>linkLen+=a.textContent.trim().length);
+        const isLinky = t.length>0 && (linkLen/t.length) > 0.6;
+        if(t.length>40 && !isLinky && !(t.length<220 && isJunk(t))) blocks.push({type:'text', content:t});
       } else if(tag==='img'){
         addImg(child);
       } else if(tag==='figure'){
@@ -456,6 +491,35 @@ translateBtn.addEventListener('click', async ()=>{
 document.getElementById('manualToggle').addEventListener('click', ()=>{
   const el=document.getElementById('manualBlock');
   el.style.display = el.style.display==='block' ? 'none' : 'block';
+});
+
+document.getElementById('pdfInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  const status = document.getElementById('pdfStatus');
+  if(!file) return;
+  document.getElementById('manualBlock').style.display='block';
+  if(!window.pdfjsLib){ status.textContent='Библиотека для чтения PDF не загрузилась — проверьте интернет и попробуйте снова.'; return; }
+  status.textContent = 'Читаем PDF…';
+  try{
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: buf}).promise;
+    const pages = [];
+    for(let i=1;i<=pdf.numPages;i++){
+      status.textContent = `Читаем PDF… страница ${i} из ${pdf.numPages}`;
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(it=>it.str).join(' ').replace(/\s+/g,' ').trim();
+      if(pageText) pages.push(pageText);
+    }
+    const text = pages.join('\n\n');
+    if(!text){ status.textContent = 'Не удалось найти текст в этом PDF — возможно, это скан (картинки без текстового слоя).'; return; }
+    document.getElementById('manualText').value = text;
+    const titleInput = document.getElementById('manualTitle');
+    if(!titleInput.value.trim()) titleInput.value = file.name.replace(/\.pdf$/i,'');
+    status.textContent = `Готово — извлечено ${pdf.numPages} стр. PDF иногда ломает абзацы и переносы строк — проверьте текст ниже перед переводом и поправьте при необходимости.`;
+  }catch(err){
+    status.textContent = 'Не удалось прочитать PDF: ' + (err.message || err);
+  }
 });
 
 manualBtn.addEventListener('click', ()=>{
