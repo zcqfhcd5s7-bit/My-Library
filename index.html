@@ -469,7 +469,7 @@ function refreshKeyStatus(){
   if(saved){
     keyStatus.textContent = 'Ключ сохранён в этом браузере ✓';
     keyStatus.classList.add('ok');
-    apiKeyInput.placeholder = '•••••••••••••••';
+    apiKeyInput.placeholder = '••••••••••••••••';
   } else {
     keyStatus.textContent = 'Ключ не задан — без него перевод не работает. Ключ хранится только в вашем браузере и никуда не отправляется, кроме api.anthropic.com.';
     keyStatus.classList.remove('ok');
@@ -490,23 +490,40 @@ document.getElementById('saveKeyBtn').addEventListener('click', ()=>{
 
 refreshKeyStatus();
 
+function archiveGetIndex(){
+  try{ const raw = localStorage.getItem('articles-index'); return raw ? JSON.parse(raw) : []; }
+  catch(e){ return []; }
+}
+function archiveSetIndex(idx){
+  try{ localStorage.setItem('articles-index', JSON.stringify(idx)); }catch(e){ /* storage full or unavailable */ }
+}
+
 async function saveToArchive(title, blocks, sourceUrl){
   try{
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-    await window.storage.set('article:'+id, JSON.stringify({title, blocks, sourceUrl, date:new Date().toISOString()}));
-    let idx=[];
-    try{ const r = await window.storage.get('articles-index'); idx = r ? JSON.parse(r.value) : []; }catch(e){ idx=[]; }
+    const record = JSON.stringify({title, blocks, sourceUrl, date:new Date().toISOString()});
+    let idx = archiveGetIndex();
+    try{
+      localStorage.setItem('article:'+id, record);
+    }catch(e){
+      // storage full — drop the oldest saved articles and try again
+      while(idx.length && (e && (e.name==='QuotaExceededError' || true))){
+        const oldest = idx.pop();
+        if(!oldest) break;
+        try{ localStorage.removeItem('article:'+oldest.id); }catch(_e){}
+        try{ localStorage.setItem('article:'+id, record); e=null; break; }catch(e2){ e=e2; if(!idx.length) break; }
+      }
+    }
     idx.unshift({id, title, sourceUrl, date:new Date().toISOString()});
     idx = idx.slice(0,50);
-    await window.storage.set('articles-index', JSON.stringify(idx));
+    archiveSetIndex(idx);
   }catch(e){ /* archive is a bonus feature — safe to skip on failure */ }
 }
 
 async function renderArchiveList(){
   const box=document.getElementById('archiveBox');
   const list=document.getElementById('archiveList');
-  let idx=[];
-  try{ const r = await window.storage.get('articles-index'); idx = r ? JSON.parse(r.value) : []; }catch(e){ idx=[]; }
+  const idx = archiveGetIndex();
   if(!idx.length){ box.style.display='none'; return; }
   box.style.display='block';
   list.innerHTML = idx.map(a => `
@@ -515,26 +532,27 @@ async function renderArchiveList(){
       <button class="archive-del" data-id="${a.id}" type="button">Удалить</button>
     </div>`).join('');
   list.querySelectorAll('.archive-item').forEach(item=>{
-    item.addEventListener('click', async (e)=>{
+    item.addEventListener('click', (e)=>{
       if(e.target.classList.contains('archive-del')) return;
       const id=item.getAttribute('data-id');
       try{
-        const r = await window.storage.get('article:'+id);
-        const data = JSON.parse(r.value);
+        const raw = localStorage.getItem('article:'+id);
+        if(!raw) throw new Error('missing');
+        const data = JSON.parse(raw);
         hideError();
         renderArticle(data.title, data.blocks, data.sourceUrl);
-      }catch(err){ showError('Не удалось открыть сохранённую статью.'); }
+      }catch(err){ showError('Не удалось открыть сохранённую статью — возможно, она была удалена из памяти браузера.'); }
     });
   });
   list.querySelectorAll('.archive-del').forEach(btn=>{
-    btn.addEventListener('click', async (e)=>{
+    btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       const id=btn.getAttribute('data-id');
       try{
-        await window.storage.delete('article:'+id);
-        let idx=[]; const r = await window.storage.get('articles-index'); idx = r ? JSON.parse(r.value) : [];
+        localStorage.removeItem('article:'+id);
+        let idx = archiveGetIndex();
         idx = idx.filter(a=>a.id!==id);
-        await window.storage.set('articles-index', JSON.stringify(idx));
+        archiveSetIndex(idx);
         renderArchiveList();
       }catch(err){}
     });
